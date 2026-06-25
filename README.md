@@ -2,10 +2,6 @@
 
 **Reputation-gated AI agent hooks for Uniswap v4 — MEV defense + dynamic fee optimization, settled in USDC on Arc.**
 
-> Built for the Lepton Agents Hackathon (Canteen × Circle on Arc, June 15–29 2025)
-
----
-
 ## What it does
 
 AgentSwap embeds AI agents directly into the Uniswap v4 swap lifecycle via hooks. Every swap:
@@ -234,6 +230,3 @@ agentswap/
 | USDC-native | No volatile gas token; agent earnings are denominated in the same asset as LP fees |
 | ERC-8004 + ERC-8183 deployed | Identity, reputation, and job settlement primitives are production-ready on Arc testnet |
 
----
-
-*@CoderOfPHCity / Cliphaus Labs — Lepton Agents Hackathon 2025*
