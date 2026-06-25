@@ -1,6 +1,6 @@
 # AgentSwap
 
-**Reputation-gated AI agent hooks for Uniswap v4 — MEV defense + dynamic fee optimization, settled in USDC on Arc.**
+**Reputation-gated AI agent hooks for Uniswap v4 — MEV defense + dynamic fee optimization, settled in USDC.**
 
 ## What it does
 
@@ -10,9 +10,6 @@ AgentSwap embeds AI agents directly into the Uniswap v4 swap lifecycle via hooks
 2. Triggers either **MEV sandwich blocking** or **dynamic fee optimization**
 3. **Pays the agent** in USDC via ERC-8183 atomic settlement on Arc (sub-cent gas, sub-second finality)
 4. **Updates the agent's reputation** — good performance → higher score → more pool assignments → more earnings
-
-**ShieldSuite insight baked in**: LP principal is protected by keeping fee revenue aligned with volatility. High volatility → agent raises fees → LPs earn more per swap to offset impermanent loss. Low volatility → agent lowers fees → attracts volume → more total fee revenue.
-
 ---
 
 ## Architecture
