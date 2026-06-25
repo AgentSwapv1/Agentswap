@@ -1,0 +1,26 @@
+{
+  "name": "agentswap",
+  "version": "1.0.0",
+  "description": "Reputation-gated AI agent hooks for Uniswap v4 — MEV defense + fee optimization settled in USDC on Arc",
+  "type": "module",
+  "scripts": {
+    "deploy": "node scripts/deploy.js",
+    "agent:mev": "node agents/MEVShieldAgent.js",
+    "agent:oracle": "node agents/PriceOracleAgent.js",
+    "demo": "node scripts/simulateSandwich.js",
+    "dashboard": "node dashboard/server.js",
+    "test": "node test/agentswap.test.js",
+    "setup:arc": "node scripts/setupArc.js",
+    "setup:circle": "node scripts/setupCircle.js"
+  },
+  "dependencies": {
+    "@circle-fin/developer-controlled-wallets": "^10.7.1",
+    "axios": "^1.18.1",
+    "dotenv": "^16.6.1",
+    "viem": "^2.53.1",
+    "ws": "^8.21.0"
+  },
+  "engines": {
+    "node": ">=20.18.2"
+  }
+}

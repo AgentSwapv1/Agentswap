@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentSwap — Live Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d0f14;
+    --surface:   #141720;
+    --surface2:  #1c2030;
+    --border:    #252a3a;
+    --text:      #e2e8f0;
+    --muted:     #64748b;
+    --green:     #22c55e;
+    --red:       #ef4444;
+    --amber:     #f59e0b;
+    --blue:      #3b82f6;
+    --purple:    #a855f7;
+    --teal:      #14b8a6;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; line-height: 1.5; }
+
+  /* Layout */
+  .layout { display: grid; grid-template-columns: 260px 1fr; grid-template-rows: 56px 1fr; min-height: 100vh; }
+
+  /* Topbar */
+  .topbar { grid-column: 1/-1; display: flex; align-items: center; gap: 16px; padding: 0 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+  .logo span { color: var(--teal); }
+  .status-pill { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-left: auto; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+
+  /* Sidebar */
+  .sidebar { border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; gap: 8px; }
+  .sidebar-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 12px 0 4px; }
+  .stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .green  { color: var(--green); }
+  .red    { color: var(--red); }
+  .amber  { color: var(--amber); }
+  .blue   { color: var(--blue); }
+  .purple { color: var(--purple); }
+  .teal   { color: var(--teal); }
+
+  /* Rep meter */
+  .rep-meter { margin-top: 6px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .rep-fill   { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--blue), var(--teal)); transition: width .6s ease; }
+
+  /* Main */
+  .main { padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+  .section-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+
+  /* Metrics row */
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .metric { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .metric-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .metric-val { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+  .metric-delta { font-size: 11px; color: var(--green); margin-top: 4px; }
+
+  /* Feed */
+  .feed { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; flex: 1; }
+  .feed-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; }
+  .feed-body { height: 340px; overflow-y: auto; }
+  .feed-body::-webkit-scrollbar { width: 4px; }
+  .feed-body::-webkit-scrollbar-track { background: transparent; }
+  .feed-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .event-row { display: grid; grid-template-columns: 80px 90px 1fr auto; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 12px; animation: fadeIn .3s ease; }
+  .event-row:last-child { border-bottom: none; }
+  @keyframes fadeIn { from { opacity:0; transform: translateY(-4px); } to { opacity:1; transform: none; } }
+
+  .tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+  .tag-mev     { background: rgba(239,68,68,.15);  color: var(--red); }
+  .tag-intent  { background: rgba(59,130,246,.15); color: var(--blue); }
+  .tag-settled { background: rgba(34,197,94,.15);  color: var(--green); }
+  .tag-fee     { background: rgba(245,158,11,.15); color: var(--amber); }
+  .tag-normal  { background: rgba(100,116,139,.12); color: var(--muted); }
+
+  .mono { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+  .usdc-badge { font-size: 11px; font-weight: 700; color: var(--green); white-space: nowrap; }
+
+  /* Rep timeline */
+  .rep-timeline { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .rep-bars { display: flex; align-items: flex-end; gap: 4px; height: 60px; margin-top: 8px; }
+  .rep-bar { flex: 1; border-radius: 2px 2px 0 0; min-width: 8px; transition: height .4s ease; }
+
+  /* Sandwich alert */
+  .alert { display: none; background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3); border-radius: 10px; padding: 16px; margin-bottom: 4px; animation: alertPop .3s ease; }
+  .alert.show { display: block; }
+  @keyframes alertPop { from { transform: scale(.97); opacity:0; } to { transform: none; opacity:1; } }
+  .alert-title { font-size: 13px; font-weight: 700; color: var(--red); margin-bottom: 6px; }
+  .alert-body { font-size: 12px; color: var(--muted); line-height: 1.6; font-family: var(--font-mono); }
+
+  .badge-arc { font-size: 10px; background: rgba(20,184,166,.12); color: var(--teal); border: 1px solid rgba(20,184,166,.25); padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-left: auto; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="logo">Agent<span>Swap</span></div>
+    <div style="font-size:12px;color:var(--muted)">Reputation-gated AI hooks for Uniswap v4</div>
+    <div class="status-pill">
+      <div class="dot" id="conn-dot" style="background:var(--amber)"></div>
+      <span id="conn-label">Connecting...</span>
+    </div>
+    <span class="badge-arc">Arc Testnet</span>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Agent</div>
+
+    <div class="stat-card">
+      <div class="stat-label">Reputation score</div>
+      <div class="stat-value blue" id="rep-score">—</div>
+      <div class="rep-meter"><div class="rep-fill" id="rep-fill" style="width:0%"></div></div>
+      <div class="stat-sub" id="rep-sub">ERC-8004 on Arc</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-label">USDC earned</div>
+      <div class="stat-value green" id="usdc-earned">$0.000000</div>
+      <div class="stat-sub">ERC-8183 settlement</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-label">Jobs completed</div>
+      <div class="stat-value teal" id="total-jobs">0</div>
+      <div class="stat-sub" id="mev-rate">MEV rate: 0%</div>
+    </div>
+
+    <div class="sidebar-label">Pool</div>
+
+    <div class="stat-card">
+      <div class="stat-label">Monitored pool</div>
+      <div class="stat-value" style="font-size:13px;font-family:monospace" id="pool-addr">USDC/ETH 0.3%</div>
+      <div class="stat-sub">Arc Testnet</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-label">Min rep gate</div>
+      <div class="stat-value purple">750</div>
+      <div class="stat-sub">/ 1000 required</div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- MEV alert banner -->
+    <div class="alert" id="mev-alert">
+      <div class="alert-title">⚠ MEV SANDWICH DETECTED AND BLOCKED</div>
+      <div class="alert-body" id="alert-body">—</div>
+    </div>
+
+    <!-- Metric cards -->
+    <div>
+      <div class="section-title">Live metrics</div>
+      <div class="metrics">
+        <div class="metric">
+          <div class="metric-label">Swaps analyzed</div>
+          <div class="metric-val" id="swaps-analyzed">0</div>
+          <div class="metric-delta" id="swaps-delta">+0 this session</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">MEV blocked</div>
+          <div class="metric-val red" id="mev-blocked">0</div>
+          <div class="metric-delta" id="mev-delta" style="color:var(--red)">0 attacks stopped</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Fees optimized</div>
+          <div class="metric-val amber" id="fees-opt">0</div>
+          <div class="metric-delta" id="fees-delta" style="color:var(--amber)">0 swaps improved</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Agent fee bps</div>
+          <div class="metric-val teal">5</div>
+          <div class="metric-delta" style="color:var(--teal)">0.05% per swap</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Event feed -->
+    <div class="feed">
+      <div class="feed-header">
+        <span>Live event feed</span>
+        <div class="dot" style="background:var(--teal)"></div>
+        <span style="color:var(--muted);font-weight:400">beforeSwap → afterSwap → settlement</span>
+      </div>
+      <div class="feed-body" id="feed-body">
+        <div class="event-row" style="color:var(--muted)">
+          <span>—</span><span>—</span><span>Waiting for swaps...</span><span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rep score history -->
+    <div class="rep-timeline">
+      <div class="section-title">Reputation history (last 20 jobs)</div>
+      <div class="rep-bars" id="rep-bars"></div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const state = {
+  repHistory: [],
+  events:     [],
+  sessionStart: Date.now(),
+}
+
+function $(id) { return document.getElementById(id) }
+
+function fmt(ts) {
+  return new Date(ts).toISOString().slice(11,23)
+}
+
+function addEvent(ev) {
+  state.events.unshift(ev)
+  if (state.events.length > 50) state.events.pop()
+  renderFeed()
+
+  if (ev.type === 'settled' && ev.repScore) {
+    state.repHistory.push(ev.repScore)
+    if (state.repHistory.length > 20) state.repHistory.shift()
+    renderRepBars()
+  }
+
+  if (ev.type === 'intent' && ev.mevFlag) {
+    showMEVAlert(ev)
+  }
+}
+
+function renderFeed() {
+  const feed = $('feed-body')
+  feed.innerHTML = state.events.slice(0, 30).map(ev => {
+    let tag, detail, usdc = ''
+    if (ev.type === 'intent' && ev.mevFlag) {
+      tag    = '<span class="tag tag-mev">MEV BLOCKED</span>'
+      detail = `<span class="mono">${(ev.mevEvidence || 'Sandwich detected').slice(0,60)}...</span>`
+    } else if (ev.type === 'intent') {
+      tag    = '<span class="tag tag-fee">Fee opt</span>'
+      detail = `<span class="mono">feeOverride: ${ev.feeOverrideBps}bps</span>`
+    } else if (ev.type === 'settled') {
+      tag    = '<span class="tag tag-settled">Settled</span>'
+      detail = `<span class="mono">perf: ${ev.perfScore} | rep: ${ev.repScore}</span>`
+      usdc   = `<span class="usdc-badge">+$${(ev.usdcEarned||0).toFixed(4)}</span>`
+    } else {
+      tag    = '<span class="tag tag-normal">Info</span>'
+      detail = `<span class="mono">${JSON.stringify(ev).slice(0,60)}</span>`
+    }
+    const swapSnip = ev.swapId ? ev.swapId.slice(0,12)+'...' : '—'
+    return `<div class="event-row">
+      <span style="color:var(--muted);font-family:monospace;font-size:11px">${fmt(ev.ts||Date.now())}</span>
+      ${tag}
+      ${detail}
+      ${usdc}
+    </div>`
+  }).join('')
+}
+
+function renderRepBars() {
+  const bars = $('rep-bars')
+  const max  = Math.max(...state.repHistory, 1000)
+  bars.innerHTML = state.repHistory.map(score => {
+    const h = Math.round((score / max) * 56)
+    const color = score >= 900 ? 'var(--green)' : score >= 800 ? 'var(--teal)' : score >= 700 ? 'var(--amber)' : 'var(--red)'
+    return `<div class="rep-bar" style="height:${h}px;background:${color}" title="Rep: ${score}"></div>`
+  }).join('')
+}
+
+function updateStatus(s) {
+  const rep = s.repScore || 0
+  $('rep-score').textContent     = rep
+  $('rep-fill').style.width      = (rep / 1000 * 100) + '%'
+  $('rep-sub').textContent       = `${s.totalJobs || 0} jobs completed`
+  $('usdc-earned').textContent   = `$${parseFloat(s.usdcEarned||0).toFixed(6)}`
+  $('total-jobs').textContent    = s.totalJobs || 0
+  $('mev-rate').textContent      = `MEV rate: ${s.mevRate || '0%'}`
+  $('swaps-analyzed').textContent = s.swapsAnalyzed || 0
+  $('swaps-delta').textContent   = `+${s.swapsAnalyzed||0} this session`
+  $('mev-blocked').textContent   = s.mevDetected || 0
+  $('mev-delta').textContent     = `${s.mevDetected||0} attacks stopped`
+  $('fees-opt').textContent      = s.feesOptimized || 0
+  $('fees-delta').textContent    = `${s.feesOptimized||0} swaps improved`
+}
+
+let alertTimeout
+function showMEVAlert(ev) {
+  const alert = $('mev-alert')
+  $('alert-body').textContent = [
+    `Pattern:   ${ev.mevEvidence || 'Sandwich detected'}`,
+    `Swap ID:   ${(ev.swapId||'').slice(0,20)}...`,
+    `Action:    beforeSwap revert — MEVDetected()`,
+    `Status:    Attack blocked | Victim swap protected`,
+  ].join('\n')
+  alert.classList.add('show')
+  clearTimeout(alertTimeout)
+  alertTimeout = setTimeout(() => alert.classList.remove('show'), 5000)
+}
+
+// ── WebSocket ─────────────────────────────────
+const wsUrl = `ws://${location.host}`
+let ws
+
+function connect() {
+  ws = new WebSocket(wsUrl)
+
+  ws.onopen = () => {
+    $('conn-dot').style.background   = 'var(--green)'
+    $('conn-label').textContent      = 'Live'
+  }
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data)
+      if (msg.type === 'status') {
+        updateStatus(msg)
+      } else if (msg.type === 'history') {
+        msg.events.forEach(ev => { state.events.push(ev) })
+        renderFeed()
+      } else {
+        addEvent(msg)
+      }
+    } catch {}
+  }
+
+  ws.onclose = () => {
+    $('conn-dot').style.background = 'var(--red)'
+    $('conn-label').textContent    = 'Disconnected — retrying...'
+    setTimeout(connect, 2000)
+  }
+}
+
+// Fallback: poll API if WS unavailable
+async function pollStatus() {
+  try {
+    const [statusRes, eventsRes] = await Promise.all([
+      fetch('/api/status'), fetch('/api/events')
+    ])
+    const status = await statusRes.json()
+    const events = await eventsRes.json()
+    updateStatus(status)
+    const newEvents = events.filter(e => !state.events.find(x => x.ts === e.ts))
+    newEvents.forEach(e => addEvent(e))
+  } catch {}
+}
+
+// Try WS first, poll as fallback
+try { connect() } catch {}
+setInterval(pollStatus, 3000)
+pollStatus()
+</script>
+</body>
+</html>
