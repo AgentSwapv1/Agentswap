@@ -70,6 +70,7 @@ IdentityRegistry:   0x8004A818BFB912233c491871b3d84c89A494BD9e
 ReputationRegistry: 0x8004B663056A597Dffe9eCcC1965A193B7388713
 ValidationRegistry: 0x8004Cb1BF31DAf7788923b405b754f57acEB4272
 AgenticCommerce:    0x0747EEf0706327138c69792bF28Cd525089e4583
+Mock-USDC_ADDRESS=0xE4b73bA327A6A332cA3dCD6Ebd1c0A095eBBE37D
 ```
 
 ---
@@ -127,19 +128,16 @@ $ forge script script/Deploy.s.sol   --rpc-url https://rpc.testnet.arc.network  
 
 ### 6. Run the demo
 ```bash
-# Live sandwich simulation (showstopper demo)
-npm run demo
 
 # Or start the agents
 npm run agent:mev      # MEVShieldAgent (terminal 1)
 npm run agent:oracle   # PriceOracleAgent (terminal 2)
-npm run dashboard      # Live dashboard at localhost:3000 (terminal 3)
+npm run dashboard      # Live dashboard 
 ```
 
 ### 7. Run tests
 ```bash
 npm test
-# 31 tests — MEVShieldAgent, PriceOracleAgent, detection, settlement, rep scoring
 ```
 
 ---
