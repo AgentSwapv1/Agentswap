@@ -11,14 +11,20 @@
 import { createWalletClient, createPublicClient, http, parseAbi, keccak256, encodePacked } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { EventEmitter } from 'events'
+import WebSocket from 'ws';
 import dotenv from 'dotenv'
 dotenv.config()
 
 const arcTestnet = {
-  id: 1516,
+  id: 5042002,
   name: 'Arc Testnet',
   nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 6 },
-  rpcUrls: { default: { http: [process.env.ARC_RPC_URL || 'https://rpc.arc.testnet.circle.com'] } },
+  rpcUrls: {
+    default: {
+      http: [process.env.ARC_RPC_URL || 'https://arc-testnet.g.alchemy.com/v2/7cluOS8jdf6j7UXBzAhwx'],
+      webSocket: [process.env.ALCHEMY_WS_URL || 'wss://arc-testnet.g.alchemy.com/v2/7cluOS8jdf6j7UXBzAhwx'],
+    }
+  },
 }
 
 const HOOK_ABI = parseAbi([
@@ -65,14 +71,84 @@ class MEVShieldAgent extends EventEmitter {
     this.log('Starting MEVShieldAgent...')
     await this._refreshReputation()
     this._startMempoolMonitor()
+  //  await this._listenForSettlements();
     this.log(`Active | wallet: ${this.account?.address || 'simulation'} | pools: ${this.monitoredPools.size}`)
   }
 
   _startMempoolMonitor() {
-    // Production: ws subscription to Arc node pending txs
-    // MVP: simulation loop for demo
-    setInterval(() => this._simulatePendingSwap(), 3000)
-    this.log('Mempool monitor active (simulation mode)')
+    const wsUrl = process.env.ALCHEMY_WS_URL
+  
+    if (!wsUrl) {
+      this.log('No ALCHEMY_WS_URL set — falling back to simulation mode')
+      setInterval(() => this._simulatePendingSwap(), 3000)
+      return
+    }
+  
+    this.log(`Connecting to Alchemy Arc WS: ${wsUrl.slice(0, 40)}...`)
+  
+   // const { WebSocket } = await import('ws').catch(() => ({ WebSocket: globalThis.WebSocket }))
+    // ws package is already in your dependencies
+    import('ws').then(({ default: WS }) => {
+      const ws = new WS(wsUrl)
+  
+      ws.on('open', () => {
+        this.log('Alchemy WS connected — subscribing to pending transactions')
+        // Subscribe to all pending transactions
+        ws.send(JSON.stringify({
+          jsonrpc: '2.0',
+          id:      1,
+          method:  'eth_subscribe',
+          params:  ['newPendingTransactions', true], // true = include full tx body
+        }))
+      })
+  
+      ws.on('message', (raw) => {
+        try {
+          const msg = JSON.parse(raw.toString())
+  
+          // Subscription confirmation
+          if (msg.id === 1) {
+            this.log(`Subscribed to pending txs. Sub ID: ${msg.result}`)
+            return
+          }
+  
+          // Pending tx notification
+          const tx = msg.params?.result
+          if (!tx || typeof tx !== 'object') return
+  
+          // Only care about txs sent to our MockPoolManager
+          const poolMgrAddr = (process.env.POOL_MANAGER || '').toLowerCase()
+          if (poolMgrAddr && tx.to?.toLowerCase() !== poolMgrAddr) return
+  
+          // Decode which pool this swap targets (from calldata if possible)
+          // For now: treat all pool manager calls as targeting our monitored pool
+          const poolId = [...this.monitoredPools][0] || '0xdefaultpool'
+  
+          this._onPendingSwap({
+            hash:      tx.hash,
+            from:      tx.from,
+            poolId,
+            direction: 'USDC->ETH', // decode from calldata in production
+            amountIn:  parseInt(tx.value || '0x0', 16) / 1e6,
+            gasPrice:  BigInt(tx.gasPrice || '0x0'),
+          })
+  
+        } catch (err) {
+          // Malformed message — ignore
+        }
+      })
+  
+      ws.on('error', (err) => {
+        this.log(`WS error: ${err.message} — retrying in 5s`)
+      })
+  
+      ws.on('close', () => {
+        this.log('WS disconnected — reconnecting in 5s')
+        setTimeout(() => this._startMempoolMonitor(), 5000)
+      })
+  
+      this._ws = ws
+    })
   }
 
   _simulatePendingSwap() {
@@ -88,6 +164,38 @@ class MEVShieldAgent extends EventEmitter {
       amountIn:    Math.floor(Math.random() * 100000) + 1000,
       gasPrice:    BigInt(Math.floor(Math.random() * 50) + 10) * 1_000_000_000n,
     })
+  }
+
+  async _listenForSettlements() {
+    if (!this.public) return;
+    const filter = {
+      address: this.hookAddress,
+      event: parseAbi('event AgentSettled(bytes32 indexed swapId, bytes32 agentId, uint256 usdcPaid, uint256 perfScore)'),
+    };
+    this.public.watchContractEvent({
+      ...filter,
+      onLogs: (logs) => {
+        for (const log of logs) {
+          const { swapId, agentId, usdcPaid, perfScore } = log.args;
+          if (agentId.toLowerCase() === this.agentId.toLowerCase()) {
+            // Update stats based on actual on‑chain event
+            this.stats.usdcEarned += usdcPaid;
+            this.stats.totalJobs++;
+            this.stats.repScore = Math.round(
+              (this.stats.repScore * (this.stats.totalJobs - 1) + Number(perfScore)) / this.stats.totalJobs
+            );
+            this.emit('settled', {
+              swapId,
+              usdcEarned: Number(usdcPaid) / 1e6,
+              perfScore: Number(perfScore),
+              repScore: this.stats.repScore,
+              totalJobs: this.stats.totalJobs,
+            });
+            this.log(`[settled on‑chain] +$${Number(usdcPaid)/1e6} USDC | perf: ${perfScore} | rep: ${this.stats.repScore}`);
+          }
+        }
+      },
+    });
   }
 
   async _onPendingSwap(tx) {
@@ -161,8 +269,29 @@ class MEVShieldAgent extends EventEmitter {
 
       const payload = { swapId, feeOverrideBps: feeOverride, mevFlag, mevEvidence: evidence, timestamp, signature }
 
-      // Production: await this.wallet.writeContract({ address: this.hookAddress, abi: HOOK_ABI, functionName: 'registerIntent', args: [...] })
       this.log(`[intent] mev:${mevFlag} fee:${feeOverride}bps | ${swapId.slice(0,14)}...`)
+
+      // ── Submit onchain if hook is deployed ────────────────
+      if (this.hookAddress && this.hookAddress !== '0x' + '1'.padStart(40,'0') && this.wallet) {
+        try {
+          const txHash = await this.wallet.writeContract({
+            address:      this.hookAddress,
+            abi:          HOOK_ABI,
+            functionName: 'registerIntent',
+            args: [
+              swapId,
+              feeOverride,
+              mevFlag,
+              evidence || '',
+              BigInt(timestamp),
+              signature,
+            ],
+          })
+          this.log(`[intent] onchain tx: ${txHash}`)
+        } catch (err) {
+          this.log(`[intent] onchain failed (${err.message.slice(0,60)}) — simulation mode`)
+        }
+      }
 
       this.emit('intentSubmitted', { ...payload, agentWallet: this.account?.address })
       setTimeout(() => this._onSettlement(swapId, mevFlag, feeOverride), 1200)

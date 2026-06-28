@@ -116,6 +116,10 @@ npm run setup:circle
 npm run deploy
 # Deploys AgentSwapHook.sol to Arc testnet
 # Configures pool with MEVShieldAgent
+
+```
+$ forge script script/Deploy.s.sol   --rpc-url https://rpc.testnet.arc.network   --private-key $DEPLOYER_PRIVATE_KEY   --broadcast   -vvv
+```
 ```
 
 ### 6. Run the demo
@@ -145,7 +149,7 @@ CIRCLE_API_KEY=
 CIRCLE_ENTITY_SECRET=
 
 # Arc testnet
-ARC_RPC_URL=https://rpc.arc.testnet.circle.com
+ARC_RPC_URL=https://rpc.testnet.arc.network
 
 # Filled by npm run setup:arc
 WALLET_SET_ID=
@@ -205,14 +209,14 @@ agentswap/
 │   ├── setupArc.js             # Circle wallet creation + ERC-8004 registration
 │   ├── setupCircle.js          # Wallet balance check + hook funding instructions
 │   ├── deploy.js               # Hook deployment + pool configuration
-│   └── simulateSandwich.js     # Hackathon demo: live sandwich attack + block
+│   └── simulateSandwich.js     # live sandwich attack + block
 ├── dashboard/
 │   ├── server.js               # WebSocket + HTTP API, runs agent, streams events
 │   └── index.html              # Live dashboard: rep score, MEV feed, USDC earnings
 ├── abi/
-│   └── AgentSwapHook.json      # Hook ABI for frontend + scripts
+│   └── AgentSwapHook.json   
 ├── test/
-│   └── agentswap.test.js       # 31 tests across all agent logic
+│   └── agentswap.test.js      
 └── README.md
 ```
 

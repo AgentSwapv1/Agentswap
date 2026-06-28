@@ -1,28 +1,16 @@
 /**
  * setupArc.js
- *
- * Bootstraps the Arc testnet environment:
- * - Creates two Circle developer-controlled wallets (deployer + agent)
- * - Funds them from faucet
- * - Registers the agent on ERC-8004 IdentityRegistry
- * - Writes addresses to .env
- *
- * Prerequisites:
- *   uv tool install git+https://github.com/the-canteen-dev/ARC-cli
- *   npm install -g @circle-fin/cli
- *   Set CIRCLE_API_KEY and CIRCLE_ENTITY_SECRET in .env
+ * Creates two Circle developer-controlled wallets on Arc testnet,
+ * derives ERC-8004 agent ID, and writes everything to .env
  *
  * Run: node scripts/setupArc.js
  */
 
-import { initiateDeveloperControlledWalletsClient } from '@circle-fin/developer-controlled-wallets'
-import { createPublicClient, http, keccak256, toBytes, parseAbi } from 'viem'
+import { CircleDeveloperControlledWalletsClient, Blockchain } from '@circle-fin/developer-controlled-wallets'
+import { keccak256, toBytes } from 'viem'
 import { writeFileSync, existsSync, readFileSync } from 'fs'
 import dotenv from 'dotenv'
 dotenv.config()
-
-const ARC_RPC  = 'https://rpc.arc.testnet.circle.com'
-const CHAIN_ID = 1516
 
 const ERC8004 = {
   identityRegistry:   '0x8004A818BFB912233c491871b3d84c89A494BD9e',
@@ -31,11 +19,6 @@ const ERC8004 = {
   agenticCommerce:    '0x0747EEf0706327138c69792bF28Cd525089e4583',
 }
 
-const IDENTITY_ABI = parseAbi([
-  'function registerAgent(bytes32 agentId, string metadataURI) external',
-  'function getAgent(bytes32 agentId) external view returns (address wallet, string metadataURI, bool active)',
-])
-
 function log(msg) { console.log(`[setup-arc] ${msg}`) }
 
 async function main() {
@@ -43,68 +26,61 @@ async function main() {
     console.error(`
 ERROR: Missing Circle credentials.
 
-1. Create an account at https://console.circle.com
-2. Generate an API key (Keys → Create Key → Standard Key)
-3. Register your entity secret
-4. Add to .env:
-   CIRCLE_API_KEY=your_key
-   CIRCLE_ENTITY_SECRET=your_secret
-
-Then re-run: npm run setup:arc
+Steps:
+  1. Create account at https://console.circle.com
+  2. Keys → Create Key → Standard Key  → copy it
+  3. Run: node -e "import('@circle-fin/developer-controlled-wallets').then(m => console.log(m.generateEntitySecret()))"
+  4. Paste both into your .env file:
+       CIRCLE_API_KEY=your_api_key
+       CIRCLE_ENTITY_SECRET=your_64char_hex_secret
+  5. Re-run: npm run setup:arc
 `)
     process.exit(1)
   }
 
-  log('Initializing Circle developer-controlled wallets client...')
-  const client = initiateDeveloperControlledWalletsClient({
+  log('Connecting to Circle API...')
+  const client = new CircleDeveloperControlledWalletsClient({
     apiKey:       process.env.CIRCLE_API_KEY,
     entitySecret: process.env.CIRCLE_ENTITY_SECRET,
   })
 
-  // ── Step 1: Create wallet set ───────────────
+  // ── Create wallet set ─────────────────────────
   log('Creating AgentSwap wallet set...')
   const wsRes = await client.createWalletSet({ name: 'AgentSwap-Wallets' })
   const walletSetId = wsRes.data?.walletSet?.id
-  log(`Wallet set created: ${walletSetId}`)
+  if (!walletSetId) throw new Error('Wallet set creation failed: ' + JSON.stringify(wsRes))
+  log(`Wallet set: ${walletSetId}`)
 
-  // ── Step 2: Create deployer + agent wallets ─
-  log('Creating 2 Arc Testnet SCA wallets (deployer + agent)...')
+  // ── Create 2 wallets ──────────────────────────
+  log('Creating deployer + agent wallets on Arc testnet...')
   const walletsRes = await client.createWallets({
-    blockchains: ['ARC-TESTNET'],
-    count:       2,
+    blockchains:  [Blockchain.ArcTestnet],
+    count:        2,
     walletSetId,
-    accountType: 'SCA',
+    accountType:  'SCA',
   })
 
-  const wallets      = walletsRes.data?.wallets || []
+  const wallets        = walletsRes.data?.wallets || []
   const deployerWallet = wallets[0]
   const agentWallet    = wallets[1]
 
   if (!deployerWallet || !agentWallet) {
-    console.error('Failed to create wallets:', walletsRes)
-    process.exit(1)
+    throw new Error('Wallet creation failed: ' + JSON.stringify(walletsRes))
   }
 
-  log(`Deployer wallet: ${deployerWallet.address}`)
-  log(`Agent wallet:    ${agentWallet.address}`)
+  log(`Deployer: ${deployerWallet.address}`)
+  log(`Agent:    ${agentWallet.address}`)
 
-  // ── Step 3: Faucet ──────────────────────────
-  log(`\nFund your wallets with testnet USDC:`)
-  log(`  Arc Faucet: https://faucet.arc.testnet.circle.com`)
-  log(`  Deployer:   ${deployerWallet.address}`)
-  log(`  Agent:      ${agentWallet.address}`)
-  log(`  (Request at least 10 USDC each)\n`)
-
-  // ── Step 4: Derive agent ID ─────────────────
+  // ── Derive agent ERC-8004 ID ──────────────────
   const agentId = keccak256(toBytes(`agentswap-mev-${agentWallet.address}`))
   log(`Agent ERC-8004 ID: ${agentId}`)
 
-  // ── Step 5: Write .env ──────────────────────
+  // ── Merge into .env ───────────────────────────
   const envPath   = '.env'
   const existing  = existsSync(envPath) ? readFileSync(envPath, 'utf-8') : ''
   const newVars   = {
-    ARC_RPC_URL:          ARC_RPC,
-    CHAIN_ID:             String(CHAIN_ID),
+    ARC_RPC_URL:          'https://rpc.testnet.arc.network',
+    CHAIN_ID:             '1516',
     WALLET_SET_ID:        walletSetId,
     DEPLOYER_WALLET_ID:   deployerWallet.id,
     DEPLOYER_ADDRESS:     deployerWallet.address,
@@ -117,48 +93,41 @@ Then re-run: npm run setup:arc
     AGENTIC_COMMERCE:     ERC8004.agenticCommerce,
   }
 
-  // Merge — don't overwrite existing values
-  let envContent = existing
+  let content = existing
   for (const [k, v] of Object.entries(newVars)) {
-    const regex = new RegExp(`^${k}=.*$`, 'm')
-    if (regex.test(envContent)) {
-      envContent = envContent.replace(regex, `${k}=${v}`)
-    } else {
-      envContent += `\n${k}=${v}`
-    }
+    const rx = new RegExp(`^${k}=.*$`, 'm')
+    content = rx.test(content) ? content.replace(rx, `${k}=${v}`) : content + `\n${k}=${v}`
   }
-  writeFileSync(envPath, envContent.trim() + '\n')
+  writeFileSync(envPath, content.trim() + '\n')
   log('.env updated ✓')
 
-  // ── Step 6: Summary ─────────────────────────
   console.log(`
-─── Arc Setup Complete ─────────────────────────
+─── Arc Setup Complete ───────────────────────────
 
-  Wallet set:     ${walletSetId}
-  Deployer:       ${deployerWallet.address}
-  Agent:          ${agentWallet.address}
-  Agent ID:       ${agentId}
+  Wallet set:  ${walletSetId}
+  Deployer:    ${deployerWallet.address}
+  Agent:       ${agentWallet.address}
+  Agent ID:    ${agentId}
 
   ERC-8004 contracts (Arc testnet):
     IdentityRegistry:   ${ERC8004.identityRegistry}
     ReputationRegistry: ${ERC8004.reputationRegistry}
-    ValidationRegistry: ${ERC8004.validationRegistry}
     AgenticCommerce:    ${ERC8004.agenticCommerce}
 
   Next steps:
-  1. Fund wallets at https://faucet.arc.testnet.circle.com
-  2. Run: npm run setup:circle    (Circle wallet config)
-  3. Run: npm run deploy          (deploy hook contract)
-  4. Run: npm run agent:mev       (start MEV shield agent)
-  5. Run: npm run dashboard       (start live dashboard)
-  6. Run: npm run demo            (run sandwich simulation)
+  1. Fund both wallets at https://faucet.arc.testnet.circle.com
+  2. Run: npm run setup:circle   (verify balances)
+  3. Run: npm run deploy         (deploy hook)
+  4. Run: npm run agent:mev      (start agent)
+  5. Run: npm run dashboard      (open localhost:3000)
+  6. Run: npm run demo           (sandwich demo)
 
-───────────────────────────────────────────────
+─────────────────────────────────────────────────
 `)
 }
 
 main().catch(err => {
-  console.error('Setup error:', err.message)
-  if (err.response?.data) console.error(err.response.data)
+  console.error('\nSetup error:', err.message || err)
+  if (err.response?.data) console.error(JSON.stringify(err.response.data, null, 2))
   process.exit(1)
 })

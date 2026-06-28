@@ -20,12 +20,16 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 const arcTestnet = {
-  id: 1516,
+  id: 5042002,
   name: 'Arc Testnet',
   nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 6 },
-  rpcUrls: { default: { http: [process.env.ARC_RPC_URL || 'https://rpc.arc.testnet.circle.com'] } },
+  rpcUrls: {
+    default: {
+      http: [process.env.ARC_RPC_URL || 'https://arc-testnet.g.alchemy.com/v2/7cluOS8jdf6j7UXBzAhwx'],
+      webSocket: [process.env.ALCHEMY_WS_URL || 'wss://arc-testnet.g.alchemy.com/v2/7cluOS8jdf6j7UXBzAhwx'],
+    }
+  },
 }
-
 // Fee tiers (bps) mapped to volatility buckets
 const FEE_SCHEDULE = [
   { maxVol: 0.05,  feeBps: 500,   label: 'ultra-low'  },  // 0.05%
@@ -35,6 +39,11 @@ const FEE_SCHEDULE = [
   { maxVol: 1.00,  feeBps: 5000,  label: 'high'       },  // 0.5%
   { maxVol: Infinity, feeBps: 10000, label: 'extreme' },   // 1.0%
 ]
+
+const HOOK_ABI = parseAbi([
+  'function registerIntent(bytes32 swapId, uint24 feeOverrideBps, bool mevFlag, string mevEvidence, uint256 timestamp, bytes sig) external',
+  'event AgentSettled(bytes32 indexed swapId, bytes32 agentId, uint256 usdcPaid, uint256 perfScore)',
+])
 
 class PriceOracleAgent extends EventEmitter {
   constructor(config) {
@@ -64,6 +73,8 @@ class PriceOracleAgent extends EventEmitter {
     }
   }
 
+
+
   async start() {
     this.log('Starting PriceOracleAgent...')
     this._initPriceWindows()
@@ -83,7 +94,7 @@ class PriceOracleAgent extends EventEmitter {
   _startPriceSimulator() {
     // Production: subscribe to Arc node for pool PriceUpdated events
     // MVP: simulate TWAP tick updates every 2s
-    setInterval(() => this._simulatePriceTick(), 2000)
+    setInterval(() => this._simulatePriceTick(), 3000)
     this.log('Price feed active (simulation mode)')
   }
 
@@ -136,7 +147,8 @@ class PriceOracleAgent extends EventEmitter {
     }
     const mean = logReturns.reduce((s, v) => s + v, 0) / logReturns.length
     const variance = logReturns.reduce((s, v) => s + (v - mean) ** 2, 0) / logReturns.length
-    return Math.sqrt(variance * 365 * 24 * 60)  // annualized (1-minute bars)
+    const periodsPerHour = 3600 / 2  // 1800 ticks per hour at 2s interval
+    return Math.sqrt(variance * periodsPerHour)
   }
 
   _selectFee(vol) {
@@ -152,28 +164,55 @@ class PriceOracleAgent extends EventEmitter {
 
   async _submitFeeIntent(poolId, feeBps, vol, label) {
     this.stats.feesSubmitted++
-    const swapId    = keccak256(encodePacked(['bytes32', 'uint256'], [poolId, BigInt(Date.now())]))
+    const swapId = keccak256(encodePacked(['bytes32', 'uint256'], [poolId, BigInt(Date.now())]))
     const timestamp = Math.floor(Date.now() / 1000)
+const innerHash = keccak256(encodePacked(
+  ['bytes32', 'uint24', 'bool', 'uint256'],
+  [swapId, feeBps, false, BigInt(timestamp)]
+))
+const signature = await this.account.signMessage({ message: { raw: innerHash } })
+  
+    this.log(`[intent] fee: ${feeBps}bps | regime: ${label} | ${swapId.slice(0,14)}...`)
+  
+// ── Submit on-chain ──
+if (this.hookAddress && this.hookAddress !== '0x' + '1'.padStart(40, '0') && this.wallet) {
+  if (this._txPending) {
+    this.log(`[intent] skipping — previous tx still pending`)
+    return
+  }
 
-    const payload = {
-      swapId,
-      feeOverrideBps: feeBps,
-      mevFlag:        false,
-      mevEvidence:    '',
-      volatility:     vol,
-      regime:         label,
-      timestamp,
+  try {
+    this._txPending = true
+    const txHash = await this.wallet.writeContract({
+      address:      this.hookAddress,
+      abi:          HOOK_ABI,
+      functionName: 'registerIntent',
+      chain:        arcTestnet,
+      args: [
+        swapId,
+        feeBps,
+        false,
+        '',
+        BigInt(timestamp),
+        signature,
+      ],
+    })
+    this.log(`[intent] onchain tx: ${txHash}`)
+
+    const receipt = await this.public.waitForTransactionReceipt({ hash: txHash })
+    this.log(`[intent] confirmed block: ${receipt.blockNumber} | status: ${receipt.status}`)
+    this._txPending = false
+    if (receipt.status === 'success') {
+      this._onSettlement(swapId, feeBps, 0)
     }
 
-    this.emit('intentSubmitted', { ...payload, agentWallet: this.account?.address })
-
-    this.log(`[intent] fee: ${feeBps}bps | regime: ${label} | ${swapId.slice(0, 14)}...`)
-
-    // Simulate settlement after hook accepts the intent
-    const accepted = Math.random() > 0.15  // 85% acceptance rate
-    if (accepted) {
-      setTimeout(() => this._onSettlement(swapId, feeBps, vol), 1500)
-    }
+  } catch (err) {
+    this._txPending = false
+    this.log(`[intent] onchain failed (${err.message.slice(0, 80)}) — simulation mode`)
+  }
+}
+  
+    this.emit('intentSubmitted', { swapId, feeOverrideBps: feeBps, mevFlag: false })
   }
 
   _onSettlement(swapId, feeBps, vol) {

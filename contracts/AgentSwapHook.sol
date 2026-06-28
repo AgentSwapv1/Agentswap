@@ -1,76 +1,63 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-// ─────────────────────────────────────────────
-//  AgentSwapHook
-//  Uniswap v4 hook that gates swaps through
-//  reputation-scored AI agents (ERC-8004) and
-//  settles per-swap USDC micropayments via
-//  ERC-8183 on Arc.
-// ─────────────────────────────────────────────
+import "./interfaces/IUniswapV4.sol";
+import "./interfaces/IERC8004.sol";
 
-struct PoolKey {
-    address currency0;
-    address currency1;
-    uint24  fee;
-    int24   tickSpacing;
-    address hooks;
-}
+/**
+ * AgentSwapHook
+ *
+ * Uniswap v4 hook that embeds reputation-gated AI agents into every swap.
+ *
+ * DATA FLOW:
+ * ─────────────────────────────────────────────────────────────────────
+ *  [Offchain Agent]
+ *      observes pending swap in mempool
+ *      runs MEV detection / fee optimization
+ *      signs AgentIntent{swapId, mevFlag, feeOverrideBps, timestamp}
+ *      calls registerIntent() — lands in block N-1
+ *
+ *  [Block N — PoolManager calls hook]
+ *      beforeSwap():
+ *          1. reads pool config → gets assignedAgentId
+ *          2. calls ERC-8004 ReputationRegistry.getScore(agentId)
+ *          3. if score < minRepScore → revert (agent not qualified)
+ *          4. reads pendingIntents[swapId]
+ *          5. if mevFlag=true → revert MEVDetected (sandwich blocked)
+ *          6. if feeOverrideBps set → return as lpFeeOverride
+ *
+ *      afterSwap():
+ *          1. computes slippage saved vs baseline fee
+ *          2. computes agentFee = amountIn * agentFeeBps / 10000
+ *          3. transfers USDC to agent wallet (ERC-8183 settlement simulation)
+ *          4. calls ERC-8004 ReputationRegistry.recordEvent(agentId, jobId, perfScore)
+ *          5. emits AgentSettled
+ * ─────────────────────────────────────────────────────────────────────
+ */
+contract AgentSwapHook is IHooks {
 
-struct BalanceDelta {
-    int128 amount0;
-    int128 amount1;
-}
-
-interface IPoolManager {
-    struct SwapParams {
-        bool    zeroForOne;
-        int256  amountSpecified;
-        uint160 sqrtPriceLimitX96;
-    }
-}
-
-interface IIdentityRegistry {
-    function getAgent(bytes32 agentId)
-        external view returns (address wallet, string memory metadataURI, bool active);
-}
-
-interface IReputationRegistry {
-    function getScore(bytes32 agentId)
-        external view returns (uint256 score, uint256 totalJobs, uint256 lastUpdated);
-    function recordEvent(bytes32 agentId, bytes32 jobId, uint256 score, string calldata eventType)
-        external;
-}
-
-interface IERC20 {
-    function transfer(address to, uint256 amount) external returns (bool);
-    function transferFrom(address from, address to, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
-
-contract AgentSwapHook {
-
-    // ── Immutables ───────────────────────────
+    // ── Immutables ───────────────────────────────────────────
     address public immutable poolManager;
     address public immutable identityRegistry;
     address public immutable reputationRegistry;
     address public immutable usdc;
     address public owner;
 
-    // ── Structs ──────────────────────────────
+    // ── Pool config ──────────────────────────────────────────
     struct PoolConfig {
         bytes32 assignedAgentId;
         address agentWallet;
-        uint256 minRepScore;
-        uint256 agentFeeBps;
+        uint256 minRepScore;       // e.g. 750
+        uint256 agentFeeBps;       // e.g. 5 = 0.05% of amountIn
         bool    mevProtectionEnabled;
         bool    dynamicFeeEnabled;
         bool    active;
     }
 
+    // ── Agent intent (submitted prior block) ─────────────────
     struct AgentIntent {
         bytes32 swapId;
-        uint24  feeOverrideBps;
+        uint24  feeOverrideBps;    // 0 = no override
         bool    mevFlag;
         string  mevEvidence;
         uint256 timestamp;
@@ -78,6 +65,7 @@ contract AgentSwapHook {
         bool    exists;
     }
 
+    // ── Swap outcome (written in beforeSwap, read in afterSwap) ─
     struct SwapOutcome {
         bytes32 agentId;
         int256  slippageSavedBps;
@@ -85,31 +73,30 @@ contract AgentSwapHook {
         bool    settled;
     }
 
-    // ── Storage ──────────────────────────────
-    mapping(bytes32 => PoolConfig)   public poolConfigs;
-    mapping(bytes32 => AgentIntent)  public pendingIntents;
-    mapping(bytes32 => uint256)      public swapBaseFees;
-    mapping(bytes32 => SwapOutcome)  public swapOutcomes;
+    mapping(bytes32 => PoolConfig)  public poolConfigs;
+    mapping(bytes32 => AgentIntent) public pendingIntents;
+    mapping(bytes32 => uint256)     public swapBaseFees;
+    mapping(bytes32 => SwapOutcome) public swapOutcomes;
 
-    uint256 public constant MAX_BPS             = 10000;
-    uint256 public constant AGENT_FEE_FLOOR     = 1000;   // 0.001 USDC (6 decimals)
+    uint256 public constant MAX_BPS         = 10000;
+    uint256 public constant AGENT_FEE_FLOOR = 1000; // 0.001 USDC (6 decimals)
 
-    // ── Events ───────────────────────────────
+    // ── Events ───────────────────────────────────────────────
     event PoolConfigured(bytes32 indexed poolId, bytes32 agentId, uint256 minRepScore);
-    event IntentRegistered(bytes32 indexed swapId, bytes32 agentId, bool mevFlag, uint24 feeOverride);
+    event IntentRegistered(bytes32 indexed swapId, bool mevFlag, uint24 feeOverride);
     event SwapIntercepted(bytes32 indexed swapId, bool mevBlocked, uint24 feeApplied);
     event AgentSettled(bytes32 indexed swapId, bytes32 agentId, uint256 usdcPaid, uint256 perfScore);
     event MEVBlocked(bytes32 indexed swapId, bytes32 agentId, string evidence);
 
-    // ── Errors ───────────────────────────────
+    // ── Errors ───────────────────────────────────────────────
     error NotPoolManager();
     error PoolNotConfigured();
     error AgentNotActive();
     error InsufficientReputation(uint256 required, uint256 actual);
     error SwapAlreadyProcessed();
     error MEVDetected(string evidence);
+    error IntentExpired();
 
-    // ── Constructor ──────────────────────────
     constructor(
         address _poolManager,
         address _identityRegistry,
@@ -123,9 +110,10 @@ contract AgentSwapHook {
         owner              = msg.sender;
     }
 
-    modifier onlyOwner() { require(msg.sender == owner, "Not owner"); _; }
+    modifier onlyOwner()      { require(msg.sender == owner,       "Not owner");       _; }
+    modifier onlyPoolManager() { if (msg.sender != poolManager) revert NotPoolManager(); _; }
 
-    // ── Pool Configuration ───────────────────
+    // ── Pool configuration (called by deployer) ──────────────
     function configurePool(
         bytes32 poolId,
         bytes32 agentId,
@@ -135,31 +123,31 @@ contract AgentSwapHook {
         bool    mevProtection,
         bool    dynamicFee
     ) external onlyOwner {
-        (,, bool active) = IIdentityRegistry(identityRegistry).getAgent(agentId);
-        if (!active) revert AgentNotActive();
+     address agentOwner = IIdentityRegistry(identityRegistry).ownerOf(uint256(agentId));
+if (agentOwner != agentWallet) revert AgentNotActive();
 
         poolConfigs[poolId] = PoolConfig({
-            assignedAgentId:     agentId,
-            agentWallet:         agentWallet,
-            minRepScore:         minRepScore,
-            agentFeeBps:         agentFeeBps,
+            assignedAgentId:      agentId,
+            agentWallet:          agentWallet,
+            minRepScore:          minRepScore,
+            agentFeeBps:          agentFeeBps,
             mevProtectionEnabled: mevProtection,
-            dynamicFeeEnabled:   dynamicFee,
-            active:              true
+            dynamicFeeEnabled:    dynamicFee,
+            active:               true
         });
         emit PoolConfigured(poolId, agentId, minRepScore);
     }
 
-    // ── Intent Registration ──────────────────
+    // ── Agent registers intent (prior block) ─────────────────
     function registerIntent(
-        bytes32      swapId,
-        uint24       feeOverrideBps,
-        bool         mevFlag,
+        bytes32       swapId,
+        uint24        feeOverrideBps,
+        bool          mevFlag,
         string calldata mevEvidence,
-        uint256      intentTimestamp,
+        uint256       intentTimestamp,
         bytes calldata sig
     ) external {
-        require(block.timestamp <= intentTimestamp + 30, "Intent expired");
+        if (block.timestamp > intentTimestamp + 60) revert IntentExpired();
 
         bytes32 msgHash = keccak256(abi.encodePacked(
             "\x19Ethereum Signed Message:\n32",
@@ -169,28 +157,27 @@ contract AgentSwapHook {
         require(signer != address(0), "Bad signature");
 
         pendingIntents[swapId] = AgentIntent({
-            swapId:        swapId,
+            swapId:         swapId,
             feeOverrideBps: feeOverrideBps,
-            mevFlag:       mevFlag,
-            mevEvidence:   mevEvidence,
-            timestamp:     intentTimestamp,
-            signature:     sig,
-            exists:        true
+            mevFlag:        mevFlag,
+            mevEvidence:    mevEvidence,
+            timestamp:      intentTimestamp,
+            signature:      sig,
+            exists:         true
         });
-        emit IntentRegistered(swapId, bytes32(0), mevFlag, feeOverrideBps);
+        emit IntentRegistered(swapId, mevFlag, feeOverrideBps);
     }
 
-    // ── beforeSwap ───────────────────────────
+    // ── beforeSwap ───────────────────────────────────────────
     function beforeSwap(
         address,
         PoolKey calldata key,
         IPoolManager.SwapParams calldata,
         bytes calldata hookData
-    ) external returns (bytes4, int256, uint24) {
-        if (msg.sender != poolManager) revert NotPoolManager();
-
+    ) external override onlyPoolManager returns (bytes4, int256, uint24) {
         bytes32 swapId = abi.decode(hookData, (bytes32));
         bytes32 poolId = _poolId(key);
+
         PoolConfig storage cfg = poolConfigs[poolId];
         if (!cfg.active) revert PoolNotConfigured();
 
@@ -201,19 +188,22 @@ contract AgentSwapHook {
 
         swapBaseFees[swapId] = key.fee;
 
+        // Write outcome shell for afterSwap
+        swapOutcomes[swapId] = SwapOutcome({
+            agentId:          cfg.assignedAgentId,
+            slippageSavedBps: 0,
+            mevBlocked:       false,
+            settled:          false
+        });
+
         AgentIntent storage intent = pendingIntents[swapId];
         uint24 feeOverride = 0;
 
         if (intent.exists) {
-            // MEV shield: block sandwich
+            // MEV shield: block the sandwich
             if (intent.mevFlag && cfg.mevProtectionEnabled) {
                 emit MEVBlocked(swapId, cfg.assignedAgentId, intent.mevEvidence);
-                swapOutcomes[swapId] = SwapOutcome({
-                    agentId:         cfg.assignedAgentId,
-                    slippageSavedBps: 0,
-                    mevBlocked:      true,
-                    settled:         false
-                });
+                swapOutcomes[swapId].mevBlocked = true;
                 revert MEVDetected(intent.mevEvidence);
             }
             // Dynamic fee: apply agent's optimized fee
@@ -222,59 +212,47 @@ contract AgentSwapHook {
             }
         }
 
-        // Shell outcome for afterSwap
-        swapOutcomes[swapId] = SwapOutcome({
-            agentId:         cfg.assignedAgentId,
-            slippageSavedBps: 0,
-            mevBlocked:      false,
-            settled:         false
-        });
-
         emit SwapIntercepted(swapId, false, feeOverride);
         return (this.beforeSwap.selector, 0, feeOverride);
     }
 
-    // ── afterSwap ────────────────────────────
+    // ── afterSwap ────────────────────────────────────────────
     function afterSwap(
         address,
         PoolKey calldata key,
         IPoolManager.SwapParams calldata params,
         BalanceDelta calldata,
         bytes calldata hookData
-    ) external returns (bytes4, int128) {
-        if (msg.sender != poolManager) revert NotPoolManager();
-
+    ) external override onlyPoolManager returns (bytes4, int128) {
         bytes32 swapId = abi.decode(hookData, (bytes32));
         bytes32 poolId = _poolId(key);
-        PoolConfig storage cfg = poolConfigs[poolId];
 
+        PoolConfig storage cfg     = poolConfigs[poolId];
         SwapOutcome storage outcome = swapOutcomes[swapId];
         if (outcome.settled) revert SwapAlreadyProcessed();
 
-        // Compute slippage saved
+        // Slippage saved = base fee - override fee (in bps)
         AgentIntent storage intent = pendingIntents[swapId];
-        int256 savedBps = 0;
         if (intent.exists && intent.feeOverrideBps > 0) {
             uint256 base = swapBaseFees[swapId];
             if (base > intent.feeOverrideBps) {
-                savedBps = int256(base) - int256(uint256(intent.feeOverrideBps));
+                outcome.slippageSavedBps = int256(base - intent.feeOverrideBps);
             }
         }
-        outcome.slippageSavedBps = savedBps;
 
-        // Compute agent USDC payment
+        // Agent fee from swap amount
         uint256 amountIn = uint256(
             params.amountSpecified < 0 ? -params.amountSpecified : params.amountSpecified
         );
         uint256 agentFee = (amountIn * cfg.agentFeeBps) / MAX_BPS;
         if (agentFee < AGENT_FEE_FLOOR) agentFee = AGENT_FEE_FLOOR;
 
-        // Settle payment
-        bool paid = _pay(cfg.agentWallet, agentFee);
+        // Pay agent (ERC-8183 settlement — direct USDC transfer)
+        bool paid = _payAgent(cfg.agentWallet, agentFee);
 
-        // ERC-8004: record performance event
-        uint256 perfScore = _perfScore(savedBps, outcome.mevBlocked);
-        bytes32 jobId = keccak256(abi.encodePacked(swapId, block.timestamp));
+        // ERC-8004: record performance
+        uint256 perfScore = _perfScore(outcome.slippageSavedBps, outcome.mevBlocked);
+        bytes32 jobId     = keccak256(abi.encodePacked(swapId, block.timestamp));
         try IReputationRegistry(reputationRegistry).recordEvent(
             cfg.assignedAgentId, jobId, perfScore, "swap_completion"
         ) {} catch {}
@@ -286,22 +264,33 @@ contract AgentSwapHook {
         return (this.afterSwap.selector, 0);
     }
 
-    // ── Helpers ──────────────────────────────
-    function _pay(address to, uint256 amount) internal returns (bool) {
-        if (IERC20(usdc).balanceOf(address(this)) < amount) return false;
-        return IERC20(usdc).transfer(to, amount);
+    // ── Helpers ──────────────────────────────────────────────
+    function _payAgent(address to, uint256 amount) internal returns (bool) {
+        (bool ok, bytes memory ret) = usdc.call(
+            abi.encodeWithSignature("balanceOf(address)", address(this))
+        );
+        if (!ok) return false;
+        uint256 bal = abi.decode(ret, (uint256));
+        if (bal < amount) return false;
+        (bool sent,) = usdc.call(abi.encodeWithSignature("transfer(address,uint256)", to, amount));
+        return sent;
     }
 
     function _perfScore(int256 savedBps, bool mevBlocked) internal pure returns (uint256) {
-        if (mevBlocked)    return 950;
-        if (savedBps > 20) return 900;
-        if (savedBps > 10) return 850;
-        if (savedBps > 0)  return 800;
+        if (mevBlocked)     return 950;
+        if (savedBps > 20)  return 900;
+        if (savedBps > 10)  return 850;
+        if (savedBps > 0)   return 800;
         return 700;
     }
 
     function _poolId(PoolKey calldata key) internal pure returns (bytes32) {
-        return keccak256(abi.encode(key.currency0, key.currency1, key.fee, key.tickSpacing));
+        return keccak256(abi.encode(
+            key.currency0.token,
+            key.currency1.token,
+            key.fee,
+            key.tickSpacing
+        ));
     }
 
     function _recoverSigner(bytes32 hash, bytes memory sig) internal pure returns (address) {
@@ -315,24 +304,22 @@ contract AgentSwapHook {
         return ecrecover(hash, v, r, s);
     }
 
-    // ── Admin ────────────────────────────────
+    // ── Admin ─────────────────────────────────────────────────
     function depositUSDC(uint256 amount) external {
-        IERC20(usdc).transferFrom(msg.sender, address(this), amount);
+        (bool ok,) = usdc.call(
+            abi.encodeWithSignature("transferFrom(address,address,uint256)", msg.sender, address(this), amount)
+        );
+        require(ok, "USDC transfer failed");
     }
 
     function withdrawUSDC(uint256 amount) external onlyOwner {
-        IERC20(usdc).transfer(owner, amount);
+        (bool ok,) = usdc.call(
+            abi.encodeWithSignature("transfer(address,uint256)", owner, amount)
+        );
+        require(ok, "Withdraw failed");
     }
 
-    function getPoolConfig(bytes32 poolId) external view returns (PoolConfig memory) {
-        return poolConfigs[poolId];
-    }
-
-    function getPendingIntent(bytes32 swapId) external view returns (AgentIntent memory) {
-        return pendingIntents[swapId];
-    }
-
-    function getSwapOutcome(bytes32 swapId) external view returns (SwapOutcome memory) {
-        return swapOutcomes[swapId];
-    }
+    function getPoolConfig(bytes32 poolId)  external view returns (PoolConfig  memory) { return poolConfigs[poolId];   }
+    function getPendingIntent(bytes32 swapId) external view returns (AgentIntent memory) { return pendingIntents[swapId]; }
+    function getSwapOutcome(bytes32 swapId)  external view returns (SwapOutcome memory) { return swapOutcomes[swapId];  }
 }

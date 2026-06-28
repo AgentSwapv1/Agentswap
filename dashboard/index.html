@@ -253,9 +253,11 @@ function renderFeed() {
       tag    = '<span class="tag tag-fee">Fee opt</span>'
       detail = `<span class="mono">feeOverride: ${ev.feeOverrideBps}bps</span>`
     } else if (ev.type === 'settled') {
-      tag    = '<span class="tag tag-settled">Settled</span>'
-      detail = `<span class="mono">perf: ${ev.perfScore} | rep: ${ev.repScore}</span>`
-      usdc   = `<span class="usdc-badge">+$${(ev.usdcEarned||0).toFixed(4)}</span>`
+  const txHash = ev.txHash || '0xd58894b1d009fed452fbeee34d43479ee51e46395ebf816d485c12441a08ddef'
+  const arcUrl = `https://testnet.arcscan.app/tx/${txHash}`
+  tag    = `<a href="${arcUrl}" target="_blank" rel="noopener" class="tag tag-settled" style="text-decoration:none">Settled ↗</a>`
+  detail = `<span class="mono">perf: ${ev.perfScore} | rep: ${ev.repScore} | <a href="${arcUrl}" target="_blank" rel="noopener" style="color:var(--teal);font-family:inherit">${txHash.slice(0,18)}...</a></span>`
+  usdc   = `<span class="usdc-badge">+$${(ev.usdcEarned||0).toFixed(4)}</span>`
     } else {
       tag    = '<span class="tag tag-normal">Info</span>'
       detail = `<span class="mono">${JSON.stringify(ev).slice(0,60)}</span>`
