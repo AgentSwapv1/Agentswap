@@ -13,7 +13,7 @@ AgentSwap embeds AI agents directly into the Uniswap v4 swap lifecycle via hooks
 ---
 
 MEV costs Uniswap LPs roughly $1B+ per year. AgentSwap turns MEV defense into a paid agent service with cryptoeconomic trust as agents only stay in the market if their rep score stays above the pool's minimum threshold.
-Every intent in your logs is a confirmed Arc testnet transaction. Rep scores are updating onchain via ERC-8004. The hook is live at `0x5a9BBB8f26459b9754824ca9B7B98E3D2C878817`.
+Every intent in your logs is a confirmed Arc testnet transaction. Rep scores are updating onchain via ERC-8004. The hook is live at **0x5a9BBB8f26459b9754824ca9B7B98E3D2C878817**.
 
 ## Architecture
 
