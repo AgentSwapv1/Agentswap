@@ -85,9 +85,6 @@ class MEVShieldAgent extends EventEmitter {
     }
   
     this.log(`Connecting to Alchemy Arc WS: ${wsUrl.slice(0, 40)}...`)
-  
-   // const { WebSocket } = await import('ws').catch(() => ({ WebSocket: globalThis.WebSocket }))
-    // ws package is already in your dependencies
     import('ws').then(({ default: WS }) => {
       const ws = new WS(wsUrl)
   
