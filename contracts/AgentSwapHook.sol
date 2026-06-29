@@ -88,6 +88,7 @@ contract AgentSwapHook is IHooks {
     event SwapIntercepted(bytes32 indexed swapId, bool mevBlocked, uint24 feeApplied);
     event AgentSettled(bytes32 indexed swapId, bytes32 agentId, uint256 usdcPaid, uint256 perfScore);
     event MEVBlocked(bytes32 indexed swapId, bytes32 agentId, string evidence);
+    event ERC8183JobCreated(uint256 indexed jobId, bytes32 agentId, uint256 amount);
 
     // ── Errors ───────────────────────────────────────────────
     error NotPoolManager();
@@ -254,9 +255,20 @@ contract AgentSwapHook is IHooks {
         uint256 agentFee = (amountIn * cfg.agentFeeBps) / MAX_BPS;
         if (agentFee < AGENT_FEE_FLOOR) agentFee = AGENT_FEE_FLOOR;
 
+        if (agenticCommerce != address(0)) {
+            try IAgenticCommerce(agenticCommerce).createJob(
+                cfg.agentWallet, // provider
+                address(this), // evaluator
+                block.timestamp + 1 hours,
+                string(abi.encodePacked("AgentSwap job ", swapId)),
+                address(0)
+            ) returns (uint256 jobId) {
+                emit ERC8183JobCreated(jobId, cfg.assignedAgentId, agentFee);
+            } catch {}
+        }
+
         // Pay agent (ERC-8183 settlement — direct USDC transfer)
         bool paid = _payAgent(cfg.agentWallet, agentFee);
-
         // ERC-8004: record performance
         uint256 perfScore = _perfScore(outcome.slippageSavedBps, outcome.mevBlocked);
         bytes32 jobId = keccak256(abi.encodePacked(swapId, block.timestamp));
@@ -279,51 +291,6 @@ contract AgentSwapHook is IHooks {
         if (bal < amount) return false;
         (bool sent,) = usdc.call(abi.encodeWithSignature("transfer(address,uint256)", to, amount));
         return sent;
-    }
-
-    function _settleViaERC8183(
-        bytes32 swapId,
-        address agentWallet,
-        bytes32 agentId,
-        uint256 agentFee,
-        int256 slippageSavedBps,
-        bool mevBlocked
-    ) internal returns (bool) {
-        // Unique job ID per swap
-        bytes32 jobId = keccak256(abi.encodePacked(swapId, block.timestamp, agentWallet));
-        bytes32 deliverableHash =
-            keccak256(abi.encodePacked(swapId, agentId, slippageSavedBps, mevBlocked, block.number));
-
-        try IERC20Approve(usdc).approve(agenticCommerce, agentFee) {}
-        catch {
-            return false;
-        }
-
-        try IAgenticCommerce(agenticCommerce).createJob(
-            jobId,
-            agentWallet, // provider — the agent
-            address(this), // evaluator — hook is self-evaluating
-            usdc, // USDC payment
-            agentFee,
-            block.timestamp + 300
-        ) {} catch {
-            return false;
-        }
-
-        try IAgenticCommerce(agenticCommerce).fundEscrow(jobId) {}
-        catch {
-            return false;
-        }
-        try IAgenticCommerce(agenticCommerce).submitDeliverable(jobId, deliverableHash) {}
-        catch {
-            return false;
-        }
-        try IAgenticCommerce(agenticCommerce).completeJob(jobId) {}
-        catch {
-            return false;
-        }
-
-        return true;
     }
 
     function _perfScore(int256 savedBps, bool mevBlocked) internal pure returns (uint256) {
