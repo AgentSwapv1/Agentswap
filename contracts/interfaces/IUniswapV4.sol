@@ -11,9 +11,9 @@ struct Currency {
 struct PoolKey {
     Currency currency0;
     Currency currency1;
-    uint24   fee;
-    int24    tickSpacing;
-    address  hooks;
+    uint24 fee;
+    int24 tickSpacing;
+    address hooks;
 }
 
 struct BalanceDelta {
@@ -23,16 +23,14 @@ struct BalanceDelta {
 
 interface IPoolManager {
     struct SwapParams {
-        bool    zeroForOne;
-        int256  amountSpecified;
+        bool zeroForOne;
+        int256 amountSpecified;
         uint160 sqrtPriceLimitX96;
     }
 
-    function swap(
-        PoolKey memory key,
-        SwapParams memory params,
-        bytes calldata hookData
-    ) external returns (BalanceDelta memory delta);
+    function swap(PoolKey memory key, SwapParams memory params, bytes calldata hookData)
+        external
+        returns (BalanceDelta memory delta);
 
     function initialize(PoolKey memory key, uint160 sqrtPriceX96) external returns (int24 tick);
 }

@@ -13,18 +13,20 @@ import "./interfaces/IERC8004.sol";
 contract MockIdentityRegistry is IIdentityRegistry {
     struct Agent {
         address wallet;
-        string  metadataURI;
-        bool    active;
+        string metadataURI;
+        bool active;
     }
+
     mapping(bytes32 => Agent) private _agents;
 
     event AgentRegistered(bytes32 indexed agentId, address wallet, string metadataURI);
     event AgentDeactivated(bytes32 indexed agentId);
 
     function registerAgent(bytes32 agentId, string calldata metadataURI) external {
-        _agents[agentId] = Agent({ wallet: msg.sender, metadataURI: metadataURI, active: true });
+        _agents[agentId] = Agent({wallet: msg.sender, metadataURI: metadataURI, active: true});
         emit AgentRegistered(agentId, msg.sender, metadataURI);
     }
+
     function ownerOf(uint256 tokenId) external view returns (address) {
         // Convert tokenId to bytes32 and check if agent exists
         bytes32 agentId = bytes32(tokenId);
@@ -39,10 +41,8 @@ contract MockIdentityRegistry is IIdentityRegistry {
         bytes32 agentId = bytes32(tokenId);
         return _agents[agentId].wallet;
     }
-    function getAgent(bytes32 agentId)
-        external view
-        returns (address wallet, string memory metadataURI, bool active)
-    {
+
+    function getAgent(bytes32 agentId) external view returns (address wallet, string memory metadataURI, bool active) {
         Agent storage a = _agents[agentId];
         return (a.wallet, a.metadataURI, a.active);
     }
@@ -55,7 +55,7 @@ contract MockIdentityRegistry is IIdentityRegistry {
 
     // Admin: force-register for deploy scripts
     function adminRegister(bytes32 agentId, address wallet, string calldata metadataURI) external {
-        _agents[agentId] = Agent({ wallet: wallet, metadataURI: metadataURI, active: true });
+        _agents[agentId] = Agent({wallet: wallet, metadataURI: metadataURI, active: true});
         emit AgentRegistered(agentId, wallet, metadataURI);
     }
 }
@@ -71,14 +71,10 @@ contract MockReputationRegistry is IReputationRegistry {
         uint256 totalJobs;
         uint256 lastUpdated;
     }
+
     mapping(bytes32 => Record) private _records;
 
-    event ReputationEvent(
-        bytes32 indexed agentId,
-        bytes32 indexed jobId,
-        uint256 score,
-        string  eventType
-    );
+    event ReputationEvent(bytes32 indexed agentId, bytes32 indexed jobId, uint256 score, string eventType);
 
     // Seed an agent with a starting score (called by deploy script)
     function seed(bytes32 agentId, uint256 initialScore) external {
@@ -86,19 +82,16 @@ contract MockReputationRegistry is IReputationRegistry {
     }
 
     function getScore(bytes32 agentId)
-        external view override
+        external
+        view
+        override
         returns (uint256 score, uint256 totalJobs, uint256 lastUpdated)
     {
         Record storage r = _records[agentId];
         return (r.score, r.totalJobs, r.lastUpdated);
     }
 
-    function recordEvent(
-        bytes32 agentId,
-        bytes32 jobId,
-        uint256 score,
-        string calldata eventType
-    ) external override {
+    function recordEvent(bytes32 agentId, bytes32 jobId, uint256 score, string calldata eventType) external override {
         Record storage r = _records[agentId];
         // Weighted rolling average: new_score = (old * jobs + score) / (jobs + 1)
         if (r.totalJobs == 0) {
@@ -106,7 +99,7 @@ contract MockReputationRegistry is IReputationRegistry {
         } else {
             r.score = (r.score * r.totalJobs + score) / (r.totalJobs + 1);
         }
-        r.totalJobs  += 1;
+        r.totalJobs += 1;
         r.lastUpdated = block.timestamp;
         emit ReputationEvent(agentId, jobId, score, eventType);
     }
@@ -118,12 +111,12 @@ contract MockReputationRegistry is IReputationRegistry {
  * On Arc testnet use Circle's real USDC: 0xFbDa5F676cB37624f28265A144A48B0d6e87d3b6
  */
 contract MockUSDC {
-    string public name     = "USD Coin";
-    string public symbol   = "USDC";
-    uint8  public decimals = 6;
+    string public name = "USD Coin";
+    string public symbol = "USDC";
+    uint8 public decimals = 6;
     uint256 public totalSupply;
 
-    mapping(address => uint256)                     public balanceOf;
+    mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -131,23 +124,23 @@ contract MockUSDC {
 
     function mint(address to, uint256 amount) external {
         balanceOf[to] += amount;
-        totalSupply   += amount;
+        totalSupply += amount;
         emit Transfer(address(0), to, amount);
     }
 
     function transfer(address to, uint256 amount) external returns (bool) {
         require(balanceOf[msg.sender] >= amount, "USDC: insufficient balance");
         balanceOf[msg.sender] -= amount;
-        balanceOf[to]         += amount;
+        balanceOf[to] += amount;
         emit Transfer(msg.sender, to, amount);
         return true;
     }
 
     function transferFrom(address from, address to, uint256 amount) external returns (bool) {
-        require(balanceOf[from]             >= amount, "USDC: insufficient balance");
+        require(balanceOf[from] >= amount, "USDC: insufficient balance");
         require(allowance[from][msg.sender] >= amount, "USDC: insufficient allowance");
-        balanceOf[from]             -= amount;
-        balanceOf[to]               += amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
         allowance[from][msg.sender] -= amount;
         emit Transfer(from, to, amount);
         return true;

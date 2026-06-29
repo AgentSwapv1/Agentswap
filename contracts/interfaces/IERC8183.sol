@@ -3,14 +3,22 @@ pragma solidity ^0.8.26;
 
 // ERC-8183 AgenticCommerce — 0x0747EEf0706327138c69792bF28Cd525089e4583
 interface IAgenticCommerce {
-    enum JobStatus { Open, Funded, Active, Delivered, Completed, Rejected, Cancelled }
+    enum JobStatus {
+        Open,
+        Funded,
+        Active,
+        Delivered,
+        Completed,
+        Rejected,
+        Cancelled
+    }
 
     struct Job {
         bytes32 jobId;
         address client;
         address provider;
         address evaluator;
-        address paymentToken;   // USDC on Arc
+        address paymentToken; // USDC on Arc
         uint256 paymentAmount;
         bytes32 deliverableHash;
         JobStatus status;
@@ -38,4 +46,8 @@ interface IAgenticCommerce {
     function completeJob(bytes32 jobId) external;
     function rejectJob(bytes32 jobId) external;
     function getJob(bytes32 jobId) external view returns (Job memory);
+}
+
+interface IERC20Approve {
+    function approve(address spender, uint256 amount) external returns (bool);
 }
