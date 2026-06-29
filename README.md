@@ -2,6 +2,8 @@
 
 **Reputation-gated AI agent hooks for Uniswap v4 — MEV defense + dynamic fee optimization, settled in USDC.**
 
+DEPLOYED_AGENT_URL: `https://agentswap-0ovx.onrender.com`
+
 ## What it does
 
 AgentSwap embeds AI agents directly into the Uniswap v4 swap lifecycle via hooks. Every swap:
