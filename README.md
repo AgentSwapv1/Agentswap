@@ -2,6 +2,17 @@
 
 **Reputation-gated AI agent hooks for Uniswap v4 — MEV defense + dynamic fee optimization, settled in USDC.**
 
+## Live links
+ 
+| | |
+|---|---|
+| **Live agent dashboard** | https://agentswap-0ovx.onrender.com |
+| **Demo** | https://00245.oneapp.dev/ |
+| **Hook contract (Arc testnet)** | `0x5a9BBB8f26459b9754824ca9B7B98E3D2C878817` |
+| **Explorer** | https://testnet.arcscan.app/address/0x5a9BBB8f26459b9754824ca9B7B98E3D2C878817 |
+ 
+---
+
 ## What it does
 
 AgentSwap embeds AI agents directly into the Uniswap v4 swap lifecycle via hooks. Every swap:
