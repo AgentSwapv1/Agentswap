@@ -2,6 +2,17 @@
 
 **Reputation-gated AI agent hooks for Uniswap v4 — MEV defense + dynamic fee optimization, settled in USDC.**
 
+## Live links
+ 
+| | |
+|---|---|
+| **Live agent dashboard** | https://agentswap-0ovx.onrender.com |
+| **Demo** | https://00245.oneapp.dev/ |
+| **Hook contract (Arc testnet)** | `0x5a9BBB8f26459b9754824ca9B7B98E3D2C878817` |
+| **Explorer** | https://testnet.arcscan.app/address/0x5a9BBB8f26459b9754824ca9B7B98E3D2C878817 |
+ 
+---
+
 ## What it does
 
 AgentSwap embeds AI agents directly into the Uniswap v4 swap lifecycle via hooks. Every swap:
@@ -13,7 +24,7 @@ AgentSwap embeds AI agents directly into the Uniswap v4 swap lifecycle via hooks
 ---
 
 MEV costs Uniswap LPs roughly $1B+ per year. AgentSwap turns MEV defense into a paid agent service with cryptoeconomic trust as agents only stay in the market if their rep score stays above the pool's minimum threshold.
-Every intent in your logs is a confirmed Arc testnet transaction. Rep scores are updating onchain via ERC-8004. The hook is live at **0x5a9BBB8f26459b9754824ca9B7B98E3D2C878817**.
+Every intent is a confirmed transaction. Rep scores are updating onchain via ERC-8004. The hook is live at **0x5a9BBB8f26459b9754824ca9B7B98E3D2C878817**.
 
 ## Architecture
 
@@ -196,39 +207,14 @@ AGENT_PRIVATE_KEY=
 
 ---
 
-## Project structure
-
-```
-agentswap/
-├── contracts/
-│   ├── AgentSwapHook.sol       # Core hook: beforeSwap + afterSwap + ERC-8183 settlement
-│   └── MockERC8004.sol         # Mock IdentityRegistry + ReputationRegistry + USDC for testing
-├── agents/
-│   ├── MEVShieldAgent.js       # Sandwich detection, signed intents, settlement tracking
-│   └── PriceOracleAgent.js     # Volatility-aware dynamic fee optimization
-├── scripts/
-│   ├── setupArc.js             # Circle wallet creation + ERC-8004 registration
-│   ├── setupCircle.js          # Wallet balance check + hook funding instructions
-│   ├── deploy.js               # Hook deployment + pool configuration
-│   └── simulateSandwich.js     # live sandwich attack + block
-├── dashboard/
-│   ├── server.js               # WebSocket + HTTP API, runs agent, streams events
-│   └── index.html              # Live dashboard: rep score, MEV feed, USDC earnings
-├── abi/
-│   └── AgentSwapHook.json   
-├── test/
-│   └── agentswap.test.js      
-└── README.md
-```
-
 ---
 
 ## Why Arc makes this possible
 
 | Arc property | AgentSwap benefit |
 |---|---|
-| Sub-second finality | AgentIntent lands in the block before the victim's swap — timing is everything |
-| ~$0.01 USDC gas fees | Per-swap agent micropayments ($0.001–$0.005) are viable; impossible on Ethereum mainnet |
+| Sub-second finality | AgentIntent lands in the block before the victim's swap |
+| ~$0.01 USDC gas fees | Per-swap agent micropayments ($0.001–$0.005) are viable |
 | USDC-native | No volatile gas token; agent earnings are denominated in the same asset as LP fees |
 | ERC-8004 + ERC-8183 deployed | Identity, reputation, and job settlement primitives are production-ready on Arc testnet |
 
