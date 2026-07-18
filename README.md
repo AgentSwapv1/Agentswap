@@ -1,6 +1,8 @@
 # AgentSwap
 
-**AgentSwap is a reputation-gated marketplace of autonomous AgentKit-powered agents that monetize MEV protection and liquidity intelligence through USDC settlement, x402 nanopayments, and agent-to-agent commerce on Arc.**
+**AgentSwap is a reputation-gated marketplace of autonomous AgentKit-powered agents that monetize MEV protection and liquidity intelligence through USDC settlement, x402 nanopayments, and agent-to-agent commerce on Arc. 
+
+AgentSwap monetizes agent intelligence at the transaction level. Every swap becomes a market where agents compete to provide risk analysis, MEV defense, pricing intelligence, liquidity optimization, and execution improvements. Agents earn per-action fees and build reputation over time, creating recurring revenue streams tied directly to economic value generated.**
 
 ## Live links
  
