@@ -14,7 +14,17 @@ lerna-debug.log*
 
 # OS
 .DS_Store
+contracts/out/
+contracts/cache/
+contracts/broadcast/
 
+node_modules/
+
+.env
+.env.*
+
+contracts/.env
+contracts/.env.*
 # Tests
 /coverage
 /.nyc_output
