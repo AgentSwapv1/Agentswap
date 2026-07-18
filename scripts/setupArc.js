@@ -120,7 +120,7 @@ Steps:
   3. Run: npm run deploy         (deploy hook)
   4. Run: npm run agent:mev      (start agent)
   5. Run: npm run dashboard      (open localhost:3000)
-  6. Run: npm run demo           (sandwich demo)
+
 
 ─────────────────────────────────────────────────
 `)

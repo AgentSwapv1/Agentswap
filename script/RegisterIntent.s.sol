@@ -8,8 +8,6 @@ import "../contracts/AgentSwapHook.sol";
  * RegisterIntent.s.sol
  *
  * Simulates the agent submitting a signed MEV intent onchain.
- * Run this BEFORE TestSwap to see the sandwich block in action.
- *
  * In production this is called by MEVShieldAgent.js automatically.
  * This script lets you test the full flow manually from the CLI.
  *

@@ -1,0 +1,17 @@
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+
+# Node
+api/node_modules/
+api/dist/
+
+# Env
+.env
+**/.env
+!**/.env.example
+
+# OS
+.DS_Store
