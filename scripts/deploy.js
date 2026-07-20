@@ -50,7 +50,7 @@ You need your actual Arc testnet wallet private key.
 Options:
 
   Option A — Use the test key for Arc testnet (safe — testnet only):
-    Keep DEPLOYER_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+    Keep DEPLOYER_PRIVATE_KEY=0x
     Fund this address on Arc faucet: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 
   Option B — Export your Circle wallet key:
@@ -61,7 +61,7 @@ Using test key for now...
 `)
   }
 
-  const key = deployerKey || '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+  const key = deployerKey || ''
   const agentWallet = process.env.AGENT_ADDRESS || process.env.DEPLOYER_ADDRESS || ''
 
   log('Running Foundry deploy script...')
