@@ -49,7 +49,7 @@ ${RESET}`)
   // ── Init agent ─────────────────────────────
   const POOL_ID = process.env.POOL_ID || keccak256(toBytes('USDC/WETH-demo-pool'))
   const AGENT_PRIVATE_KEY = process.env.AGENT_PRIVATE_KEY ||
-    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' // hardhat #0
+    '' // hardhat #0
 
   const agent = new MEVShieldAgent({
     agentId:        process.env.AGENT_ID || '0x6d65767368' + '0'.repeat(58),

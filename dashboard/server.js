@@ -21,7 +21,7 @@ const PORT = process.env.PORT || 3000
 
 const POOL_ID = process.env.POOL_ID || keccak256(toBytes('USDC/WETH-demo-pool'))
 const AGENT_KEY = process.env.AGENT_PRIVATE_KEY ||
-  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+  '0x'
 
 // ── Init agent ─────────────────────────────────
 const agent = new MEVShieldAgent({

@@ -14,7 +14,7 @@ import { keccak256, encodePacked } from 'viem'
 import { MEVShieldAgent } from '../agents/MEVShieldAgent.js'
 import { PriceOracleAgent } from '../agents/PriceOracleAgent.js'
 
-const DUMMY_KEY  = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+const DUMMY_KEY  = '0x'
 const POOL_ID    = '0x' + 'a1b2c3d4'.repeat(8)
 const AGENT_ID   = '0x' + '6d657673'.repeat(8)
 

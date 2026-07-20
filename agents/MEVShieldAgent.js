@@ -21,8 +21,8 @@ const arcTestnet = {
   nativeCurrency: { name: 'USD Coin', symbol: 'USDC', decimals: 6 },
   rpcUrls: {
     default: {
-      http: [process.env.ARC_RPC_URL || 'https://arc-testnet.g.alchemy.com/v2/7cluOS8jdf6j7UXBzAhwx'],
-      webSocket: [process.env.ALCHEMY_WS_URL || 'wss://arc-testnet.g.alchemy.com/v2/7cluOS8jdf6j7UXBzAhwx'],
+      http: [process.env.ARC_RPC_URL || 'https://arc-testnet.g.alchemy.com/v2/'],
+      webSocket: [process.env.ALCHEMY_WS_URL || 'wss://arc-testnet.g.alchemy.com/v2/'],
     }
   },
 }
